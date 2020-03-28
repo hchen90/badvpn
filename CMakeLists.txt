@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(BADVPN C)
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 include(GNUInstallDirs)
 include(TestBigEndian)
