@@ -296,8 +296,6 @@ JNIEXPORT jint JNICALL PACKAGE_NAME ## _runTun2Socks (
   options.set_signal = 0;
   options.loglevel = 2;
 
-  BLog_InitPsiphon();
-
   run();
 
   (*env)->ReleaseStringUTFChars(env, vpnIpAddress, vpnIpAddressStr);
