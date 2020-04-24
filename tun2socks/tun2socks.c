@@ -82,12 +82,6 @@
 #define LOGGER_STDOUT 1
 #define LOGGER_SYSLOG 2
 
-#ifdef ANDROID_MODULE
-
-#undef PACKAGE_NAME
-
-#endif
-
 #define SYNC_DECL \
     BPending sync_mark; \
 
@@ -268,7 +262,9 @@ static void init_arguments(char* prog);
 
 #ifdef ANDROID_MODULE
 
-JNIEXPORT jint JNICALL PACKAGE_NAME ## _runTun2Socks (
+#define FUN(p0,f0) p0 ## f0
+
+JNIEXPORT jint JNICALL FUN(PACKAGE_NAME, _runTun2Socks) (
   JNIEnv* env,
   jclass cls,
   jint vpnInterfaceFileDescriptor,
@@ -306,7 +302,7 @@ JNIEXPORT jint JNICALL PACKAGE_NAME ## _runTun2Socks (
   return 1;
 }
 
-JNIEXPORT jint JNICALL PACKAGE_NAME ## _terminateTun2Socks (
+JNIEXPORT jint JNICALL FUN(PACKAGE_NAME, _terminateTun2Socks) (
   jclass cls,
   JNIEnv* env
 ) {
