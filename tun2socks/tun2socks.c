@@ -32,6 +32,10 @@
 #include <string.h>
 #include <limits.h>
 
+#ifdef ANDROID_MODULE
+#include "jni.h"
+#endif
+
 #include <misc/version.h>
 #include <misc/loggers_string.h>
 #include <misc/loglevel.h>
@@ -77,6 +81,12 @@
 
 #define LOGGER_STDOUT 1
 #define LOGGER_SYSLOG 2
+
+#ifdef ANDROID_MODULE
+
+#undef PACKAGE_NAME
+
+#endif
 
 #define SYNC_DECL \
     BPending sync_mark; \
@@ -253,6 +263,73 @@ static int client_socks_recv_send_out (struct tcp_client *client);
 static err_t client_sent_func (void *arg, struct tcp_pcb *tpcb, u16_t len);
 static void udp_send_packet_to_device (void *unused, BAddr local_addr, BAddr remote_addr, const uint8_t *data, int data_len);
 
+static void run();
+static void init_arguments(char* prog);
+
+#ifdef ANDROID_MODULE
+
+JNIEXPORT jint JNICALL PACKAGE_NAME ## _runTun2Socks (
+  JNIEnv* env,
+  jclass cls,
+  jint vpnInterfaceFileDescriptor,
+  jint vpnInterfaceMTU,
+  jstring vpnIpAddress,
+  jstring vpnNetMask,
+  jstring socksServerAddress,
+  jstring udpgwServerAddress,
+  jint udpgwTransparentDNS
+) {
+  const char* vpnIpAddressStr = (*env)->GetStringUTFChars(env, vpnIpAddress, 0);
+  const char* vpnNetMaskStr = (*env)->GetStringUTFChars(env, vpnNetMask, 0);
+  const char* socksServerAddressStr = (*env)->GetStringUTFChars(env, socksServerAddress, 0);
+  const char* udpgwServerAddressStr = (*env)->GetStringUTFChars(env, udpgwServerAddress, 0);
+
+  init_arguments("tun2socks");
+
+  options.netif_ipaddr = (char*)vpnIpAddressStr;
+  options.netif_netmask = (char*)vpnNetMaskStr;
+  options.socks_server_addr = (char*)socksServerAddressStr;
+  options.udpgw_remote_server_addr = (char*)udpgwServerAddressStr;
+  options.udpgw_transparent_dns = udpgwTransparentDNS;
+  options.tun_fd = vpnInterfaceFileDescriptor;
+  options.tun_mtu = vpnInterfaceMTU;
+  options.set_signal = 0;
+  options.loglevel = 2;
+
+  BLog_InitPsiphon();
+
+  run();
+
+  (*env)->ReleaseStringUTFChars(env, vpnIpAddress, vpnIpAddressStr);
+  (*env)->ReleaseStringUTFChars(env, vpnNetMask, vpnNetMaskStr);
+  (*env)->ReleaseStringUTFChars(env, socksServerAddress, socksServerAddressStr);
+  (*env)->ReleaseStringUTFChars(env, udpgwServerAddress, udpgwServerAddressStr);
+
+  return 1;
+}
+
+JNIEXPORT jint JNICALL PACKAGE_NAME ## _terminateTun2Socks (
+  jclass cls,
+  JNIEnv* env
+) {
+  terminate();
+  return 0;
+}
+
+static void tcp_remove(struct tcp_pcb* pcb_list)
+{
+  struct tcp_pcb *pcb = pcb_list;
+  struct tcp_pcb *pcb2;
+
+  while (pcb != NULL) {
+      pcb2 = pcb;
+      pcb = pcb->next;
+      tcp_abort(pcb2);
+  }
+}
+
+#else
+
 int main (int argc, char **argv)
 {
     if (argc <= 0) {
@@ -297,6 +374,18 @@ int main (int argc, char **argv)
             ASSERT(0);
     }
     
+    run();
+
+fail0:
+    DebugObjectGlobal_Finish();
+
+    return 1;
+}
+
+#endif
+
+void run()
+{
     // configure logger channels
     for (int i = 0; i < BLOG_NUM_CHANNELS; i++) {
         if (options.loglevels[i] >= 0) {
@@ -455,6 +544,12 @@ int main (int argc, char **argv)
     if (have_netif) {
         netif_remove(&the_netif);
     }
+
+#ifdef ANDROID_MODULE
+    tcp_remove(tcp_bound_pcbs);
+    tcp_remove(tcp_active_pcbs);
+    tcp_remove(tcp_tw_pcbs);
+#endif
     
     BReactor_RemoveTimer(&ss, &tcp_timer);
     BFree(device_write_buf);
@@ -478,11 +573,7 @@ fail1:
     BFree(password_file_contents);
     BLog(BLOG_NOTICE, "exiting");
     BLog_Free();
-fail0:
-    DebugObjectGlobal_Finish();
-    
-    return 1;
-}
+}   
 
 void terminate (void)
 {
@@ -537,18 +628,14 @@ void print_version (void)
     printf(GLOBAL_PRODUCT_NAME" "PROGRAM_NAME" "GLOBAL_VERSION"\n"GLOBAL_COPYRIGHT_NOTICE"\n");
 }
 
-int parse_arguments (int argc, char *argv[])
+void init_arguments(char* prog)
 {
-    if (argc <= 0) {
-        return 0;
-    }
-    
     options.help = 0;
     options.version = 0;
     options.logger = LOGGER_STDOUT;
     #ifndef BADVPN_USE_WINAPI
     options.logger_syslog_facility = "daemon";
-    options.logger_syslog_ident = argv[0];
+    options.logger_syslog_ident = prog;
     #endif
     options.loglevel = -1;
     for (int i = 0; i < BLOG_NUM_CHANNELS; i++) {
@@ -568,7 +655,17 @@ int parse_arguments (int argc, char *argv[])
     options.udpgw_connection_buffer_size = DEFAULT_UDPGW_CONNECTION_BUFFER_SIZE;
     options.udpgw_transparent_dns = 0;
     options.socks5_udp = 0;
+ 
+}
+
+int parse_arguments (int argc, char *argv[])
+{
+    if (argc <= 0) {
+        return 0;
+    }
     
+    init_arguments(argv[0]);
+
     int i;
     for (i = 1; i < argc; i++) {
         char *arg = argv[i];
