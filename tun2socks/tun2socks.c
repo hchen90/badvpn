@@ -32,10 +32,6 @@
 #include <string.h>
 #include <limits.h>
 
-#ifdef ANDROID_MODULE
-#include "jni.h"
-#endif
-
 #include <misc/version.h>
 #include <misc/loggers_string.h>
 #include <misc/loglevel.h>
@@ -121,6 +117,10 @@ struct {
     int udpgw_connection_buffer_size;
     int udpgw_transparent_dns;
     int socks5_udp;
+#ifdef EXPORT_MODULE
+    int tun_fd;
+    int tun_mtu;
+#endif
 } options;
 
 // TCP client
@@ -260,52 +260,35 @@ static void udp_send_packet_to_device (void *unused, BAddr local_addr, BAddr rem
 static void run();
 static void init_arguments(char* prog);
 
-#ifdef ANDROID_MODULE
+#ifdef EXPORT_MODULE
 
-#define FUN(p0,f0) p0 ## f0
-
-JNIEXPORT jint JNICALL FUN(PACKAGE_NAME, _runTun2Socks) (
-  JNIEnv* env,
-  jclass cls,
-  jint vpnInterfaceFileDescriptor,
-  jint vpnInterfaceMTU,
-  jstring vpnIpAddress,
-  jstring vpnNetMask,
-  jstring socksServerAddress,
-  jstring udpgwServerAddress,
-  jint udpgwTransparentDNS
+extern int export_module_runTun2Socks (
+  int vpnInterfaceFileDescriptor,
+  int vpnInterfaceMTU,
+  char* vpnIpAddressStr,
+  char* vpnNetMaskStr,
+  char* socksServerAddressStr,
+  char* udpgwServerAddressStr,
+  int udpgwTransparentDNS
 ) {
-  const char* vpnIpAddressStr = (*env)->GetStringUTFChars(env, vpnIpAddress, 0);
-  const char* vpnNetMaskStr = (*env)->GetStringUTFChars(env, vpnNetMask, 0);
-  const char* socksServerAddressStr = (*env)->GetStringUTFChars(env, socksServerAddress, 0);
-  const char* udpgwServerAddressStr = (*env)->GetStringUTFChars(env, udpgwServerAddress, 0);
-
   init_arguments("tun2socks");
 
-  options.netif_ipaddr = (char*)vpnIpAddressStr;
-  options.netif_netmask = (char*)vpnNetMaskStr;
-  options.socks_server_addr = (char*)socksServerAddressStr;
-  options.udpgw_remote_server_addr = (char*)udpgwServerAddressStr;
+  options.netif_ipaddr = vpnIpAddressStr;
+  options.netif_netmask = vpnNetMaskStr;
+  options.socks_server_addr = socksServerAddressStr;
+  options.udpgw_remote_server_addr = udpgwServerAddressStr;
   options.udpgw_transparent_dns = udpgwTransparentDNS;
   options.tun_fd = vpnInterfaceFileDescriptor;
   options.tun_mtu = vpnInterfaceMTU;
-  options.set_signal = 0;
   options.loglevel = 2;
 
   run();
 
-  (*env)->ReleaseStringUTFChars(env, vpnIpAddress, vpnIpAddressStr);
-  (*env)->ReleaseStringUTFChars(env, vpnNetMask, vpnNetMaskStr);
-  (*env)->ReleaseStringUTFChars(env, socksServerAddress, socksServerAddressStr);
-  (*env)->ReleaseStringUTFChars(env, udpgwServerAddress, udpgwServerAddressStr);
-
-  return 1;
+  return 0;
 }
 
-JNIEXPORT jint JNICALL FUN(PACKAGE_NAME, _terminateTun2Socks) (
-  jclass cls,
-  JNIEnv* env
-) {
+extern int export_module_terminateTun2Socks ()
+{
   terminate();
   return 0;
 }
@@ -376,6 +359,46 @@ fail0:
     return 1;
 }
 
+void print_help (const char *name)
+{
+    printf(
+        "Usage:\n"
+        "    %s\n"
+        "        [--help]\n"
+        "        [--version]\n"
+        "        [--logger <"LOGGERS_STRING">]\n"
+        #ifndef BADVPN_USE_WINAPI
+        "        (logger=syslog?\n"
+        "            [--syslog-facility <string>]\n"
+        "            [--syslog-ident <string>]\n"
+        "        )\n"
+        #endif
+        "        [--loglevel <0-5/none/error/warning/notice/info/debug>]\n"
+        "        [--channel-loglevel <channel-name> <0-5/none/error/warning/notice/info/debug>] ...\n"
+        "        [--tundev <name>]\n"
+        "        --netif-ipaddr <ipaddr>\n"
+        "        --netif-netmask <ipnetmask>\n"
+        "        --socks-server-addr <addr>\n"
+        "        [--netif-ip6addr <addr>]\n"
+        "        [--username <username>]\n"
+        "        [--password <password>]\n"
+        "        [--password-file <file>]\n"
+        "        [--append-source-to-username]\n"
+        "        [--udpgw-remote-server-addr <addr>]\n"
+        "        [--udpgw-max-connections <number>]\n"
+        "        [--udpgw-connection-buffer-size <number>]\n"
+        "        [--udpgw-transparent-dns]\n"
+        "        [--socks5-udp]\n"
+        "Address format is a.b.c.d:port (IPv4) or [addr]:port (IPv6).\n",
+        name
+    );
+}
+
+void print_version (void)
+{
+    printf(GLOBAL_PRODUCT_NAME" "PROGRAM_NAME" "GLOBAL_VERSION"\n"GLOBAL_COPYRIGHT_NOTICE"\n");
+}
+
 #endif
 
 void run()
@@ -425,11 +448,18 @@ void run()
         goto fail2;
     }
     
+#ifdef EXPORT_MODULE
+    if (!BTap_InitWithFD(&device, &ss, options.tun_fd, options.tun_mtu, device_error_handler, NULL, 1)) {
+        BLog(BLOG_ERROR, "BTap_InitWithFD failed");
+        goto fail3;
+    }
+#else
     // init TUN device
     if (!BTap_Init(&device, &ss, options.tundev, device_error_handler, NULL, 1)) {
         BLog(BLOG_ERROR, "BTap_Init failed");
         goto fail3;
     }
+#endif
     
     // NOTE: the order of the following is important:
     // first device writing must evaluate,
@@ -539,7 +569,7 @@ void run()
         netif_remove(&the_netif);
     }
 
-#ifdef ANDROID_MODULE
+#ifdef EXPORT_MODULE
     tcp_remove(tcp_bound_pcbs);
     tcp_remove(tcp_active_pcbs);
     tcp_remove(tcp_tw_pcbs);
@@ -580,46 +610,6 @@ void terminate (void)
     
     // exit event loop
     BReactor_Quit(&ss, 1);
-}
-
-void print_help (const char *name)
-{
-    printf(
-        "Usage:\n"
-        "    %s\n"
-        "        [--help]\n"
-        "        [--version]\n"
-        "        [--logger <"LOGGERS_STRING">]\n"
-        #ifndef BADVPN_USE_WINAPI
-        "        (logger=syslog?\n"
-        "            [--syslog-facility <string>]\n"
-        "            [--syslog-ident <string>]\n"
-        "        )\n"
-        #endif
-        "        [--loglevel <0-5/none/error/warning/notice/info/debug>]\n"
-        "        [--channel-loglevel <channel-name> <0-5/none/error/warning/notice/info/debug>] ...\n"
-        "        [--tundev <name>]\n"
-        "        --netif-ipaddr <ipaddr>\n"
-        "        --netif-netmask <ipnetmask>\n"
-        "        --socks-server-addr <addr>\n"
-        "        [--netif-ip6addr <addr>]\n"
-        "        [--username <username>]\n"
-        "        [--password <password>]\n"
-        "        [--password-file <file>]\n"
-        "        [--append-source-to-username]\n"
-        "        [--udpgw-remote-server-addr <addr>]\n"
-        "        [--udpgw-max-connections <number>]\n"
-        "        [--udpgw-connection-buffer-size <number>]\n"
-        "        [--udpgw-transparent-dns]\n"
-        "        [--socks5-udp]\n"
-        "Address format is a.b.c.d:port (IPv4) or [addr]:port (IPv6).\n",
-        name
-    );
-}
-
-void print_version (void)
-{
-    printf(GLOBAL_PRODUCT_NAME" "PROGRAM_NAME" "GLOBAL_VERSION"\n"GLOBAL_COPYRIGHT_NOTICE"\n");
 }
 
 void init_arguments(char* prog)

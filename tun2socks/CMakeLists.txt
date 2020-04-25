@@ -1,7 +1,21 @@
+if(EXPORT_MODULE)
+
+add_definitions("-DEXPORT_MODULE")
+
+add_library(badvpn-tun2socks SHARED
+  tun2socks.c
+  SocksUdpGwClient.c
+)
+
+else(EXPORT_MODULE)
+
 add_executable(badvpn-tun2socks
     tun2socks.c
     SocksUdpGwClient.c
 )
+
+endif(EXPORT_MODULE)
+
 target_link_libraries(badvpn-tun2socks system flow tuntap lwip socksclient udpgw_client socks_udp_client)
 
 install(
