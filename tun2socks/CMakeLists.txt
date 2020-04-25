@@ -1,7 +1,5 @@
 if(EXPORT_MODULE)
 
-add_definitions("-DEXPORT_MODULE")
-
 add_library(badvpn-tun2socks SHARED
   tun2socks.c
   SocksUdpGwClient.c
