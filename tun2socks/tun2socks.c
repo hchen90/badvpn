@@ -267,6 +267,8 @@ extern int export_module_runTun2Socks (
   int vpnInterfaceMTU,
   char* vpnIpAddressStr,
   char* vpnNetMaskStr,
+  char* vpnUsername,
+  char* vpnPassword,
   char* socksServerAddressStr,
   char* udpgwServerAddressStr,
   int udpgwTransparentDNS
@@ -275,6 +277,8 @@ extern int export_module_runTun2Socks (
 
   options.netif_ipaddr = vpnIpAddressStr;
   options.netif_netmask = vpnNetMaskStr;
+  options.username = vpnUsername;
+  options.password = vpnPassword;
   options.socks_server_addr = socksServerAddressStr;
   options.udpgw_remote_server_addr = udpgwServerAddressStr;
   options.udpgw_transparent_dns = udpgwTransparentDNS;
