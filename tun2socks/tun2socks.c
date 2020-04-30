@@ -267,8 +267,8 @@ extern int export_module_runTun2Socks (
   int vpnInterfaceMTU,
   char* vpnIpAddressStr,
   char* vpnNetMaskStr,
-  char* vpnUsername,
-  char* vpnPassword,
+  char* vpnUsernameStr,
+  char* vpnPasswordStr,
   char* socksServerAddressStr,
   char* udpgwServerAddressStr,
   int udpgwTransparentDNS
@@ -277,18 +277,35 @@ extern int export_module_runTun2Socks (
 
   options.netif_ipaddr = vpnIpAddressStr;
   options.netif_netmask = vpnNetMaskStr;
-  options.username = vpnUsername;
-  options.password = vpnPassword;
+  options.username = vpnUsernameStr;
+  options.password = vpnPasswordStr;
   options.socks_server_addr = socksServerAddressStr;
   options.udpgw_remote_server_addr = udpgwServerAddressStr;
   options.udpgw_transparent_dns = udpgwTransparentDNS;
   options.tun_fd = vpnInterfaceFileDescriptor;
   options.tun_mtu = vpnInterfaceMTU;
   options.loglevel = 2;
+  
+  // initialize logger
+  switch (options.logger) {
+    case LOGGER_STDOUT:
+      BLog_InitStdout();
+      break;
+#ifndef BADVPN_USE_WINAPI
+    case LOGGER_SYSLOG:
+      if (!BLog_InitSyslog(options.logger_syslog_ident, options.logger_syslog_facility)) {
+        fprintf(stderr, "Failed to initialize syslog logger\n");
+        return 0;
+      }
+      break;
+#endif
+    default:
+      ASSERT(0);
+  }
 
   run();
 
-  return 0;
+  return 1;
 }
 
 extern int export_module_terminateTun2Socks ()
